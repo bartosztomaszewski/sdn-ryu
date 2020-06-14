@@ -4,12 +4,11 @@ from ryu.controller.handler import MAIN_DISPATCHER
 from ryu.controller.handler import set_ev_cls
 from ryu.ofproto import ofproto_v1_0
 
-
 from ryu.lib.packet import packet
 from ryu.lib.packet import ethernet
 from ryu.lib.packet import ipv4
 from ryu.lib.packet import icmp
-
+import json
 
 class L2Switch(app_manager.RyuApp):
     OFP_VERSIONS = [ofproto_v1_0.OFP_VERSION]
@@ -24,10 +23,6 @@ class L2Switch(app_manager.RyuApp):
         ofp = dp.ofproto
         ofp_parser = dp.ofproto_parser
         
-        #For testing
-        blocked_host = 'h2'
-        blocked_host = blocked_host[1:]
-        
         #Check if ICMP
         pkt = packet.Packet(msg.data)
         icmp_pkt = pkt.get_protocol(icmp.icmp)
@@ -35,20 +30,29 @@ class L2Switch(app_manager.RyuApp):
         if icmp_pkt:
             
             ipv4_pkt = pkt.get_protocol(ipv4.ipv4)
-            #ipv4_dst = ipv4_pkt.dst
-            icmp_type = icmp_pkt.type
+            recevier_ipv4 = ipv4_pkt.dst
+            is_blocked = False
             
+            try:
+                with open ("data.json", "r") as f:
+                    data = json.loads(f.read())
+                    
+                    for ip in data.values():
+                        if ip == recevier_ipv4:
+                            is_blocked = True                
+            except IOError:
+                pass
             
-            if ipv4_pkt.dst == ('10.0.0.' + blocked_host) and icmp_type == icmp.ICMP_ECHO_REQUEST: #ICMP_ECHO_REQUEST or 8
+            if is_blocked == True and icmp_pkt.type == icmp.ICMP_ECHO_REQUEST: #ICMP_ECHO_REQUEST or 8
                 
-                self.logger.info("This host is prohibited")
+                #self.logger.info("This host is prohibited")
                 pkt_data = self.create_icmp_unrachalbe_packet(pkt, ipv4_pkt)
                              
                 self.send_packet(ofp_parser, ofp.OFPP_FLOOD, dp, ofp.OFP_NO_BUFFER, ofp.OFPP_CONTROLLER, pkt_data)
                 return
                 
-            else:
-                self.logger.info("---Accepted ICMP packet---")
+            #else:
+                #self.logger.info("---Accepted ICMP packet---")
         
         
         self.send_packet(ofp_parser, ofp.OFPP_FLOOD, dp, msg.buffer_id, msg.in_port, 0)
